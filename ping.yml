@@ -1,5 +1,0 @@
-- name: Ping the nodes
-  gather_facts: no
-  hosts: "{{ lookup('env', 'TARGET_GROUP_NAME') | default('opies', true) }}"
-  tasks:
-  - action: ping
