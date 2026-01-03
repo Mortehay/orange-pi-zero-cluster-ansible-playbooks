@@ -40,5 +40,5 @@
       when: master is not defined or not master
 
     - name: Join workers
-      shell: docker swarm join --token {{ swarm_token }} {{ master_ip }}
-      when: (master is not defined or not master) and worker_swarm_state.stdout != "active"
+      shell: "docker swarm join --token {{ hostvars[groups['opies_manager'][0]]['worker_token']['stdout'] }} {{ hostvars[groups['opies_manager'][0]]['ansible_default_ipv4']['address'] }}:2377"
+      when: inventory_hostname in groups['opies_workers'] and worker_swarm_state.stdout != "active"

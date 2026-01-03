@@ -12,7 +12,7 @@
       lineinfile:
         path: /etc/default/cpufrequtils
         regexp: '^MAX_SPEED='
-        line: 'MAX_SPEED=1008000'
+        line: 'MAX_SPEED=1512000'
       notify: restart cpufrequtils
 
     - name: Set hostname

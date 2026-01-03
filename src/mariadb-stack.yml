@@ -1,0 +1,30 @@
+- name: Configure MariaDB Directories
+  hosts: "{{ lookup('env', 'TARGET_GROUP_NAME') | default('opies', true) }}"
+  become: true
+  tasks:
+    - name: Create data and configuration directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: markunn
+        group: markunn
+        mode: '0777'
+      loop:
+        - /home/markunn/mariadb-data
+        - /home/markunn/files
+
+- name: Deploy MariaDB Stack to Swarm
+  hosts: "{{ lookup('env', 'TARGET_GROUP_NAME') | default('opies', true) }}_manager"
+  tasks:
+    - name: Ensure the local stack directory exists
+      file:
+        path: /home/markunn/files
+        state: directory
+
+    - name: Copy MariaDB Docker compose file to Manager
+      copy:
+        src: docker-swarm-stacks/mariadb-replication-stack.yml
+        dest: /home/markunn/files/mariadb-replication-stack.yml
+
+    - name: Deploy MariaDB stack via Docker Swarm
+      shell: docker stack deploy -c /home/markunn/files/mariadb-replication-stack.yml mariadb

@@ -1,139 +1,111 @@
-# Ansible playbooks to manage Orange Pi Zero 2 clusters
+# 🎮 Orange Pi Zero 3 Minecraft & Django Cluster
 
-This repository contains a set of Ansible playbooks that help to set up and manage an Orange Pi Zero 2 cluster (lab, not for production). It also contains MariaDB deployments for testing and demo purposes, including [MariaDB Server](https://mariadb.com/kb/en/documentation/), [MariaDB MaxScale](https://mariadb.com/kb/en/maxscale/), and [MariaDB cluster (Galera)](https://mariadb.com/kb/en/galera-cluster/).
+This repository contains an automated suite of **Ansible** playbooks and shell scripts to transform your **Orange Pi Zero 3 (4GB)** boards into a high-performance **Docker Swarm Cluster**. The primary goal is to host a **PaperMC Minecraft Server** and a **MariaDB Database** for Django applications.
 
-## How to run?
+---
 
-Install Ansible on a control node and define an inventory (**/etc/ansible/hosts**). For example:
+## 📂 Project Structure
 
-```cfg
-[opies]
-192.168.1.101		ansible_user=orangepi		hostname=opi01	master=true
-192.168.1.102		ansible_user=orangepi		hostname=opi02
-192.168.1.103		ansible_user=orangepi		hostname=opi03
-192.168.1.104		ansible_user=orangepi		hostname=opi04
-```
+* `run_cluster.sh`: The master execution script that loads environment variables and runs playbooks.
+* `inventory.ini`: Defines your master and worker nodes.
+* `.env`: (**User Created**) Stores sensitive credentials like `SUDO_PASS`.
+* `configure-hosts.yml`: System-level optimizations (CPU speed, Hostnames, and Avahi).
+* `docker.yml`: Docker engine installation with Armbian-specific kernel tweaks for cgroups.
+* `docker-swarm.yml`: Orchestration logic to link nodes into a single swarm cluster.
+* `deploy-minecraft.yml`: Docker Stack definition optimized for 4GB RAM hardware.
 
-Run a playbook as follows:
+---
 
-```sh
-ansible-playbook some-playbook.yml --ask-pass
-```
+## 🛠 1. Initial Setup
 
-Or:
+### Node Preparation
+Before running Ansible, the nodes must be able to communicate:
+1.  **OS Installation**: Ensure both boards are running a fresh Armbian (Debian/Ubuntu-based) image.
+2.  **SSH Access**: You must be able to SSH from the Master node to the Worker node without a password. Share your public key from the Master:
+    ```bash
+    ssh-copy-id markunn@10.42.0.239
+    ```
 
-```sh
-ansible-playbook some-playbook.yml --ask-pass --ask-become-pass
-```
+### Ansible Installation
+Ansible must be installed on your **Master Node** (the board acting as the control node).
+1.  **Update Repository**: 
+    ```bash
+    sudo apt update
+    ```
+2.  **Install Ansible**:
+    ```bash
+    sudo apt install ansible -y
+    ```
+3.  **Verify Setup**: Run `ansible --version` to confirm installation.
 
-## Configuring
+### Environment & Inventory
+1.  **Create .env**: Create a file named `.env` in the root folder to store your system password:
+    ```bash
+    cat <<EOF > .env
+    SUDO_PASS=your_actual_system_password
+    EOF
+    ```
+2.  **Configure inventory.ini**: Ensure your IPs are correct. For your setup, use `localhost` for the Master and `10.42.0.239` for the Worker.
 
-Change the target group name by setting the `TARGET_GROUP_NAME` environment variable in your OS before running playbooks if needed. The default group name is `opies`.
+---
 
-## General usage playbooks
+## 🚀 2. Running the Cluster Setup
 
-* **configure-hosts.yml**: Sets host names, LED activity, CPU max speed, installs Avahi
-* **ping.yml**: Pings all the nodes
-* **upgrade.yml**: Updates and upgrades the nodes
-* **reboot.yml**: Reboots all the nodes
-* **shutdown.yml**: Shuts down all the nodes
-* **temperature.yml**: Prints each node's temperature
+Execute the full stack using the master script. This script automatically loads your `.env` variables and passes the `sudo` password to the Ansible playbooks.
 
-## Setting up a Docker Swarm cluster
+```bash
+chmod +x run_cluster.sh
+./run_cluster.sh
 
-* **docker.yml**: Configures the hosts for Docker and installs it
-* **docker-swarm.yml**: Creates a Docker Swarm cluster
-* **enable-remote-docker**: Allows you to control the cluster from your workstation/laptop
+What happens during execution:
 
-To create a context for your remote Swarm, run:
+Hardware Tuning: Sets CPU max speed to 1.5GHz (1512000) to ensure maximum single-threaded performance.
 
-```sh
-docker context create orange-pi-swarm --docker "host=tcp://192.168.1.101:2375"
-```
+Kernel Fixes: Switches to iptables-legacy and disables unified_cgroup_hierarchy for Armbian kernel compatibility.
 
-To use the remote context:
+Swarm Sync: The Master initializes the swarm and the worker node joins automatically.
 
-```sh
-docker context use orange-pi-swarm
-```
+Minecraft Deployment: Launches a PaperMC server with 3GB RAM allocated (tuned for 4GB hardware).
 
-To switch back to your local Docker when needed:
+🏗 3. Maintenance & Management
+Check Cluster Health
+To verify that your worker is active and connected to the manager:
 
-```sh
-docker context use default
-```
+Bash
 
-### Deploying MariaDB with HA using Docker Swarm
+docker node ls
+Monitoring Minecraft
+View the live console logs for the Minecraft service:
 
-* **mariadb-stack**: Deploys a MariaDB replication topology with a [MaxScale proxy](https://mariadb.com/kb/en/maxscale/) in front
+Bash
 
-See https://github.com/alejandro-du/mariadb-docker-deployments/tree/armv7
+docker service logs -f mc_mc
+Updating Services
+To update Minecraft versions or configurations, run the deploy command again to trigger a rolling update:
 
-## Deploying MariaDB on Kubernetes (K3s)
+Bash
 
-* **k3s.yml**: Creates a Kubernetes cluster (K3s)
-* **Mariadb-k8s-operator.yml**: Installs the MariaDB Kubernetes Operator
+docker stack deploy -c deploy-minecraft.yml mc
+🔄 4. Scaling for Django
+Database & Fake Data
+If you are developing Django applications on this cluster:
 
-### Configure kubectl
+Deploy MariaDB: Use your mariadb-stack.yml to launch the database service.
 
-If you want to use `kubectl` from a separate machine (like your laptop), you need to copy the **/etc/rancher/k3s/k3s.yaml** file from your master node to your local `kubectl` config file with the IP changed to the master node IP. For example:
+Django Seeding: To populate your development environment with fake data, utilize django-autofixture or django-seed.
 
-```sh
-ssh -tt orangepi@192.168.1.161 "sudo cat /etc/rancher/k3s/k3s.yaml" | cat > ~/.kube/config
-sed -i -e 's/127.0.0.1/192.168.1.161/g' ~/.kube/config
-```
+Note: Ensure your DATABASE_URL in Django points to the Master IP on port 4000 (MaxScale).
 
-* _You have to re-introduce the password a second time in the previous example even though there's no prompt for it._
+Bash
 
-### Create a secret for the MariaDB root password
+# Example: Running seeder from within the app container
+docker exec -it <django_container_id> python manage.py seed app_name --number=50
+⚠️ Troubleshooting
+"Missing Sudo Password": Ensure your .env file exists and contains the correct SUDO_PASS.
 
-Take note of the password:
+"No Hosts Matched": Check that your inventory.ini uses the group name [opies].
 
-```sh
-kubectl create secret generic mariadb-root-password --from-literal=password=demo123
-```
+Minecraft Lag: Ensure configure-hosts.yml ran successfully. Check if your CPU frequency is locked at 1.5GHz using cpufreq-info.
 
-### Deploy a single MariaDB node
 
-Deploy a single MariaDB server as follows:
-
-```sh
-kubectl apply -f k8s-deployments/single-mariadb-instance.yml
-```
-
-Check the progress with:
-
-```sh
-kubectl get pods -o wide -w
-```
-
-### Deploy a 3-node MariaDB cluster (with Galera)
-
-Make sure you "undeploy" previously deployed single MariaDB instances:
-
-```sh
-kubectl delete -f k8s-deployments/single-mariadb-instance.yml
-kubectl delete pvc -l app.kubernetes.io/name=mariadb
-```
-
-Deploy a 3-node [Galera](https://mariadb.com/kb/en/galera-cluster/) multi-master cluster (using Galera) as follows:
-
-```sh
-kubectl apply -f k8s-deployments/mariadb-galera-cluster.yml
-```
-
-Check the progress with:
-
-```sh
-kubectl get pods -o wide -w
-```
-
-### Connect to the database
-
-After a successful deployment, test the connection as follows (use the IP address of any of your Orange Pi devices):
-
-```sh
-mariadb -h 192.168.1.101 --port 30001 -u root -pdemo123
-````
-
-If you are using a [MariaDB Connector](https://mariadb.com/kb/en/connectors/) (Java, Python, Node.js, C++), check the HA modes where you can specify a list of IP addresses to let the connector [automatically perform failover (and transaction reply)](https://www.youtube.com/watch?v=y8eLffT9-8Q) for you.
+Would you like me to help you create a specific `mariadb-stack.yml` file to complement this Django setup?
